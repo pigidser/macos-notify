@@ -1,0 +1,2 @@
+# Preserve exact bytes of the signed app and its resources.
+"/vendor/Pi Notifier.app/**" -text

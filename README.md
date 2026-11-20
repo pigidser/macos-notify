@@ -22,10 +22,26 @@ backup=$(mktemp -d "$HOME/.pi/macos-notify-restore.XXXXXX") && (
 
 Перенесите только секцию `macosNotify` из [`config/settings.fragment.json`](config/settings.fragment.json) в `~/.pi/agent/settings.json`. Не заменяйте весь `settings.json`: это фрагмент, а не полный конфиг Pi. В снимке используется `navigationTarget: "app"` для Herdr App; `"tui"` выбирает Herdr TUI. В запущенной сессии Pi выполните `/reload`.
 
+### Pi Notifier с пиктограммой Pi
+
+В [`vendor/Pi Notifier.app`](vendor/Pi%20Notifier.app) сохранён полный бандл `terminal-notifier` 3.1.0 с пиктограммой Pi и той же ad-hoc подписью, что у установленного экземпляра. Сборка требует Apple Silicon и macOS 27.0 или новее. [Лицензия terminal-notifier](vendor/LICENSE.terminal-notifier.md) лежит рядом.
+
+Если приложения ещё нет в `~/Applications`, его можно восстановить из корня репозитория:
+
+```sh
+app="$HOME/Applications/Pi Notifier.app"
+if [ ! -e "$app" ] && [ ! -L "$app" ]; then
+  mkdir -p "$HOME/Applications" && ditto "vendor/Pi Notifier.app" "$app"
+fi
+codesign --verify --strict "$app"
+```
+
+Проверка подписи не заменяет проверку Gatekeeper: бандл не нотарифицирован. Для баннеров разрешите уведомления **Pi Notifier** в настройках macOS.
+
 ### Зависимости
 
 - Pi 1.5.2 — версия, с которой сохранён снимок.
-- Для клика нужен `terminal-notifier` (`brew install terminal-notifier`). Если уже установлено `~/Applications/Pi Notifier.app`, расширение предпочитает его. Этот отдельный app-бандл в репозиторий не входит. Если `terminal-notifier` не найден, расширение использует AppleScript без клика. Разрешите уведомления соответствующего приложения в настройках macOS.
+- Расширение предпочитает `~/Applications/Pi Notifier.app`. Если сборка не подходит, можно использовать обычный `terminal-notifier` из Homebrew. Если notifier не найден, расширение использует AppleScript без клика.
 - Для резюме нужна доступная Fast-модель из `pi-shift-router.json` (пользовательского или в доверенном проекте). Если файлов маршрутизации нет, расширение пробует `openai-codex/gpt-6-luna`. Без резюме остаётся обычное `Ready.`.
 
 В репозитории нет учётных данных, истории сессий и остальной конфигурации Pi.
