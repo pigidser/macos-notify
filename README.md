@@ -1,59 +1,49 @@
-# macos-notify для Pi
+# macos-notify + Herdr
 
-Снимок установленного расширения до интеграции с удалённым Herdr. Исходники расширения, обработчика клика и тестов скопированы без изменений. Расширение уведомляет после завершения основной интерактивной сессии Pi на macOS. Если доступна модель для суммаризации, в баннер попадает короткое резюме финального ответа. Эта версия не пересылает уведомления между машинами.
+Pi готовит короткое резюме финального ответа. Расширение `extensions/macos-notify.ts` передаёт его через OSC 7501 как именованную запись `pi-notify-summary`, не меняя штатный статус Pi. Оно не вызывает `terminal-notifier` или AppleScript. В обычном терминале вне Herdr расширение не отправляет уведомлений.
 
-## Восстановление
+На MacBook мод Herdr `macos-toast` использует штатные события Herdr. Он определяет отправителя по данным терминала, а не по тексту заголовка:
 
-Исходный снимок отмечен тегом `baseline`. Из корня репозитория (на нужной ревизии):
+- **Pi** — `Pi Notifier.app` с пиктограммой Pi. В сообщении — резюме, если оно есть; в подзаголовке — штатный контекст Herdr.
+- **Codex** — `Codex Notifier.app` с пиктограммой Codex из Herdr. Текст штатный, без суммаризации.
+- **Другие агенты и обычные тосты** — нейтральный Homebrew `terminal-notifier`. Служебные тосты с особыми действиями остаются внутри Herdr. При ошибке системной доставки мод оставляет штатный тост.
 
-```sh
-agent="$HOME/.pi/agent"
-backup=$(mktemp -d "$HOME/.pi/macos-notify-restore.XXXXXX") && (
-  set -e
-  mkdir -p "$agent/extensions" "$agent/helpers" "$backup/extensions" "$backup/helpers"
-  for file in extensions/macos-notify.ts helpers/macos-notify-focus.mjs settings.json; do
-    if [ -f "$agent/$file" ]; then cp -p "$agent/$file" "$backup/$file"; fi
-  done
-  cp extensions/macos-notify.ts "$agent/extensions/"
-  cp helpers/macos-notify-focus.mjs "$agent/helpers/"
-  printf 'Резервная копия прежних файлов: %s\n' "$backup"
-)
-```
+Клик по уведомлению агента открывает его панель через `herdr-app do agent.focus`. Правила Herdr о том, когда показывать тост, не меняются. Отдельный сетевой сервис не нужен.
 
-Перенесите только секцию `macosNotify` из [`config/settings.fragment.json`](config/settings.fragment.json) в `~/.pi/agent/settings.json`. Не заменяйте весь `settings.json`: это фрагмент, а не полный конфиг Pi. В снимке используется `navigationTarget: "app"` для Herdr App; `"tui"` выбирает Herdr TUI. В запущенной сессии Pi выполните `/reload`.
+## Установка и восстановление
 
-### Pi Notifier с пиктограммой Pi
+1. На каждой машине, где работает Pi (в том числе на Mac mini), сохраните копию прежнего файла, затем скопируйте `extensions/macos-notify.ts` в `~/.pi/agent/extensions/`. В уже запущенном Pi выполните `/reload`. Эта версия не использует прежний помощник `macos-notify-focus.mjs` и параметры `macosNotify`; менять остальную конфигурацию Pi не требуется. Проверено с Pi 1.5.2.
+2. На MacBook сохраните прежнюю папку мода, скопируйте содержимое `herdr/macos-toast/` в `~/.config/herdr-app/mods/macos-toast/`, затем выполните `~/.local/bin/herdr-app check ~/.config/herdr-app/mods/macos-toast`. В корне пользовательского лейаута (`~/.config/herdr-app/layouts/main-macos.json` на этом MacBook) укажите `"toast": "macos-toast"`. Штатный лейаут `main` править не нужно: его можно скопировать командой `~/.local/bin/herdr-app do layout.clone '{"name":"main","as":"main-macos"}'`. Проверено с Herdr App 0.1.16.
+3. Установите приложения-отправители **только на MacBook**. `vendor/Pi Notifier.app` содержит исходный подписанный ad-hoc бандл с пиктограммой Pi. Для Codex создаётся отдельный бандл: macOS берёт иконку из приложения-отправителя, а не из параметров уведомления.
 
-В [`vendor/Pi Notifier.app`](vendor/Pi%20Notifier.app) сохранён полный бандл `terminal-notifier` 3.1.0 с пиктограммой Pi и той же ad-hoc подписью, что у установленного экземпляра. Сборка требует Apple Silicon и macOS 27.0 или новее. [Лицензия terminal-notifier](vendor/LICENSE.terminal-notifier.md) лежит рядом.
+   ```sh
+   mkdir -p "$HOME/Applications"
+   pi_app="$HOME/Applications/Pi Notifier.app"
+   if [ ! -e "$pi_app" ] && [ ! -L "$pi_app" ]; then
+     ditto "vendor/Pi Notifier.app" "$pi_app"
+   fi
+   codesign --verify --strict "$pi_app"
+   # Требуется rsvg-convert (brew install librsvg), если бандл ещё не создан.
+   /bin/sh scripts/build-codex-notifier.sh
+   ```
 
-Если приложения ещё нет в `~/Applications`, его можно восстановить из корня репозитория:
+   Эти два бандла `terminal-notifier` 3.1.0 требуют Apple Silicon и macOS 27.0+. Сборки не нотарифицированы. Лицензия `terminal-notifier` лежит в `vendor/LICENSE.terminal-notifier.md`, лицензия пиктограммы Codex — в `vendor/codex/LICENSE-LobeHub.txt`. Для нейтральных уведомлений на этом Mac используется `/opt/homebrew/bin/terminal-notifier`.
+4. В **Системные настройки → Уведомления** разрешите баннеры отдельно для **Pi Notifier** и **Codex Notifier**. Для проверки разрешения можно запустить `"$HOME/Applications/Codex Notifier.app/Contents/MacOS/terminal-notifier" -diagnose` (или аналогично для Pi).
 
-```sh
-app="$HOME/Applications/Pi Notifier.app"
-if [ ! -e "$app" ] && [ ! -L "$app" ]; then
-  mkdir -p "$HOME/Applications" && ditto "vendor/Pi Notifier.app" "$app"
-fi
-codesign --verify --strict "$app"
-```
+Суммаризация использует Fast-модель из `pi-shift-router.json` (пользовательского или в доверенном проекте). Если файлов маршрутизации нет, Pi пробует `openai-codex/gpt-6-luna`. Если модели нет или суммаризация не удалась, Herdr показывает обычное уведомление о завершении.
 
-Проверка подписи не заменяет проверку Gatekeeper: бандл не нотарифицирован. Для баннеров разрешите уведомления **Pi Notifier** в настройках macOS.
+## Откат
 
-### Зависимости
+Переключение Herdr на штатный лейаут: `~/.local/bin/herdr-app do layout.switch '{"name":"main"}'`. Снимок расширения до интеграции — тег `baseline`, а снимок с добавленным бандлом Pi — коммит `0d62415`. В их README описано восстановление предыдущей версии. В репозитории нет учётных данных или истории сессий.
 
-- Pi 1.5.2 — версия, с которой сохранён снимок.
-- Расширение предпочитает `~/Applications/Pi Notifier.app`. Если сборка не подходит, можно использовать обычный `terminal-notifier` из Homebrew. Если notifier не найден, расширение использует AppleScript без клика.
-- Для резюме нужна доступная Fast-модель из `pi-shift-router.json` (пользовательского или в доверенном проекте). Если файлов маршрутизации нет, расширение пробует `openai-codex/gpt-6-luna`. Без резюме остаётся обычное `Ready.`.
+## Проверка
 
-В репозитории нет учётных данных, истории сессий и остальной конфигурации Pi.
-
-## Тесты
-
-На macOS с Node.js 22 или новее. Изолированный `HOME` не даёт установленному `Pi Notifier.app` влиять на тесты; системные уведомления не отправляются.
+Из корня репозитория (Node.js 22+):
 
 ```sh
 (
   test_home=$(mktemp -d) || exit 1
   trap 'rm -rf "$test_home"' EXIT
-  HOME="$test_home" node --experimental-strip-types --test tests/macos-notify.test.mjs
+  HOME="$test_home" node --experimental-strip-types --test tests/*.test.mjs
 )
 ```
